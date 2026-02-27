@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# node / javascript
+node_modules/
+dist/
+npm-debug.log*
+yarn-error.log
+
+# environment
+.env
+
+# editor/IDE
+.vscode/
+
+# add other patterns according to the tech‑stack listed in req/req
