@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .btn-toggle {
+    @apply px-3 py-1 text-xs rounded-full transition-colors;
+  }
+
+  .btn-toggle-active {
+    @apply bg-indigo-600 text-white;
+  }
+
+  .btn-toggle-inactive {
+    @apply bg-gray-100 text-gray-600 hover:bg-gray-200;
+  }
+}
