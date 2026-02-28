@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -8,17 +9,29 @@ import (
 	"github.com/google/uuid"
 	apperrors "github.com/thucdx/todovibe/internal/errors"
 	"github.com/thucdx/todovibe/internal/middleware"
-	"github.com/thucdx/todovibe/internal/repository"
-	"github.com/thucdx/todovibe/internal/services"
+	"github.com/thucdx/todovibe/internal/models"
 )
+
+// authServicer is the subset of services.AuthService used by AuthHandler.
+type authServicer interface {
+	IsPINConfigured(ctx context.Context) bool
+	SetupPIN(ctx context.Context, pin string) error
+	Login(ctx context.Context, pin string) (string, error)
+	Logout(ctx context.Context, tokenStr string)
+}
+
+// sessionValidator validates a session token (subset of repository.SessionRepo).
+type sessionValidator interface {
+	Validate(ctx context.Context, token uuid.UUID) (*models.Session, error)
+}
 
 // AuthHandler handles authentication-related endpoints.
 type AuthHandler struct {
-	svc      *services.AuthService
-	sessions *repository.SessionRepo
+	svc      authServicer
+	sessions sessionValidator
 }
 
-func NewAuthHandler(svc *services.AuthService, sessions *repository.SessionRepo) *AuthHandler {
+func NewAuthHandler(svc authServicer, sessions sessionValidator) *AuthHandler {
 	return &AuthHandler{svc: svc, sessions: sessions}
 }
 

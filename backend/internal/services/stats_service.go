@@ -10,9 +10,14 @@ import (
 var validViews   = map[string]bool{"day": true, "week": true, "month": true}
 var validMetrics = map[string]bool{"count": true, "points": true}
 
+// chartRepo is the DB subset used by StatsService.
+type chartRepo interface {
+	ChartData(ctx context.Context, view, metric string) ([]repository.ChartPoint, error)
+}
+
 // StatsService provides aggregated productivity chart data.
 type StatsService struct {
-	repo *repository.TaskRepo
+	repo chartRepo
 }
 
 func NewStatsService(repo *repository.TaskRepo) *StatsService {

@@ -1,20 +1,26 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/thucdx/todovibe/internal/services"
+	"github.com/thucdx/todovibe/internal/repository"
 )
+
+// calendarServicer is the subset of services.CalendarService used by CalendarHandler.
+type calendarServicer interface {
+	MonthlySummary(ctx context.Context, year, month int) ([]repository.DaySummary, error)
+}
 
 // CalendarHandler handles the monthly calendar summary endpoint.
 type CalendarHandler struct {
-	svc *services.CalendarService
+	svc calendarServicer
 }
 
-func NewCalendarHandler(svc *services.CalendarService) *CalendarHandler {
+func NewCalendarHandler(svc calendarServicer) *CalendarHandler {
 	return &CalendarHandler{svc: svc}
 }
 

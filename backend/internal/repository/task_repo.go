@@ -114,6 +114,12 @@ func (r *TaskRepo) ToggleDone(ctx context.Context, id uuid.UUID) (*models.Task, 
 	return &t, nil
 }
 
+// DeleteAll removes all tasks.
+func (r *TaskRepo) DeleteAll(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM tasks`)
+	return err
+}
+
 // Delete removes a task by ID.
 func (r *TaskRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = $1`, id)

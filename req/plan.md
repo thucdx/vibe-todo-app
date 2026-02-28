@@ -15,7 +15,7 @@
 
 ## 1. Project Structure
 
-```
+```text
 todo_vibe/
 ├── .env.example
 ├── docker-compose.yml
@@ -575,5 +575,399 @@ cd backend && go test ./...
 cd frontend && npm run test
 
 # E2E (requires stack running)
+npx playwright test
+```
+
+---
+
+## 9. Testing Expansion Plan
+
+This section details every new test file to be added. The existing tests cover only auth
+flows (`auth_service_test.go`, `PinGate.test.tsx`). Everything else is uncovered.
+
+---
+
+### 9.1 Coverage Baseline
+
+| Layer | File | Status |
+| --- | --- | --- |
+| Backend service | `auth_service_test.go` | Partial |
+| Frontend component | `PinGate.test.tsx` | Partial |
+| Backend handlers | all | None |
+| Backend middleware | all | None |
+| Backend models | `date.go` | None |
+| Frontend components | TaskList, TaskItem, TaskForm, MiniCalendar, StatsChart, ErrorBoundary | None |
+| Frontend hooks | useTasks, useCalendar, useStats | None |
+| E2E | smoke test | None |
+
+---
+
+### 9.2 Testing Strategy
+
+**Backend — handler layer** uses thin service interfaces.
+Each handler file will gain a matching interface (e.g. `taskServicer`) that the concrete
+service satisfies automatically via Go structural typing. Tests provide stub implementations
+that control what the service returns, so no database is needed for handler tests.
+
+**Backend — service/model layer** runs as pure unit tests (no DB) where logic can be
+exercised without I/O, and as integration tests (real Postgres) for anything that depends
+on the DB. Integration tests skip automatically when `TEST_DB_DSN` is not set, matching the
+pattern already established in `auth_service_test.go`.
+
+**Frontend** follows the pattern already established in `PinGate.test.tsx`: mock hooks with
+`vi.mock`, render with `@testing-library/react`, assert with `@testing-library/jest-dom`,
+simulate user events with `@testing-library/user-event`.
+
+**E2E** uses Playwright against the full Docker stack (`http://localhost`).
+
+---
+
+### 9.3 Backend — New Test Files
+
+#### `backend/internal/models/date_test.go`
+
+Pure unit tests, no DB. Cover the four interface methods of the custom `Date` type.
+
+Test cases:
+
+- `MarshalJSON` serialises a `Date` to `"YYYY-MM-DD"` JSON string (not RFC 3339).
+- `UnmarshalJSON` parses `"2026-02-28"` back into the correct `time.Time`.
+- `UnmarshalJSON` with JSON `null` returns no error and leaves the value zeroed.
+- `UnmarshalJSON` with a non-date string (e.g. `"not-a-date"`) returns an error.
+- `Scan` with a `time.Time` value sets the `Date` correctly.
+- `Scan` with an unsupported type (e.g. `int`) returns an error.
+- `Value` returns the underlying `time.Time` unchanged.
+- Round-trip: marshal → unmarshal → compare to the original `Date`.
+
+---
+
+#### `backend/internal/services/stats_service_test.go`
+
+Pure unit tests, no DB. The only logic in `StatsService` is the view/metric validation.
+Use a stub `taskRepo` that records what was called.
+
+Test cases:
+
+- `ChartData` with `view="invalid"` → returns `ErrBadRequest`, repo never called.
+- `ChartData` with `metric="invalid"` → returns `ErrBadRequest`, repo never called.
+- `ChartData` with `view="day"`, `metric="count"` → delegates to repo, returns repo result.
+- `ChartData` with `view="week"`, `metric="points"` → same delegation.
+- `ChartData` with `view="month"`, `metric="count"` → same delegation.
+
+---
+
+#### `backend/internal/handlers/testhelpers_test.go`
+
+Shared test infrastructure used by all handler test files.
+
+Provides:
+
+- Interface definitions (`authServicer`, `taskServicer`, `calendarServicer`, `statsServicer`)
+  with only the methods each handler actually calls.
+- Stub implementations of each interface where every method can be configured via a
+  function field (e.g. `LoginFn func(ctx, pin) (string, error)`).
+- A `newTestRouter` helper that creates a `*gin.Engine`, optionally applies the auth
+  middleware with a stub session repo, registers routes, and returns the engine plus an
+  `httptest.Server`.
+- A `makeRequest` helper: builds an `*http.Request`, injects an optional session cookie,
+  executes it against the router via `httptest.NewRecorder`, returns the recorder.
+
+---
+
+#### `backend/internal/handlers/auth_handler_test.go`
+
+Uses stubs from `testhelpers_test.go`. No DB required.
+
+Test cases for **`GET /api/v1/auth/status`**:
+
+- No cookie → `{configured: false, authenticated: false}`.
+- Cookie with invalid UUID → `{authenticated: false}`.
+- Cookie with valid UUID but stub session validation fails → `{authenticated: false}`.
+- Cookie with valid UUID and stub session validation succeeds → `{authenticated: true}`.
+- `configured` reflects what `IsPINConfigured` returns from the stub.
+
+Test cases for **`POST /api/v1/auth/setup`**:
+
+- Missing body → 400.
+- PIN shorter than 4 chars → 400.
+- Stub returns `ErrPINAlreadySet` → 409.
+- Valid PIN, stub returns nil → 201.
+
+Test cases for **`POST /api/v1/auth/login`**:
+
+- Stub returns `ErrInvalidPIN` → 401, no `Set-Cookie` header.
+- Valid PIN, stub returns token string → 200, `Set-Cookie` header present with `HttpOnly`.
+
+Test cases for **`POST /api/v1/auth/logout`**:
+
+- Always → 200, `Set-Cookie` header clears the cookie (max-age = -1).
+
+---
+
+#### `backend/internal/handlers/task_handler_test.go`
+
+Uses stubs from `testhelpers_test.go`. All routes are behind the auth middleware with a
+stub session repo that always returns a valid session.
+
+Test cases for **`GET /api/v1/tasks`**:
+
+- No `date` query param → 400.
+- Stub `List` returns empty slice → 200 with JSON body `[]` (not `null`).
+- Stub `List` returns two tasks → 200 with JSON array of length 2.
+
+Test cases for **`POST /api/v1/tasks`**:
+
+- Empty body → 400.
+- Missing required `title` → 400.
+- Valid body → stub `Create` called with correct input, responds 201 with task JSON.
+
+Test cases for **`PUT /api/v1/tasks/:id`**:
+
+- Non-UUID `:id` → 400.
+- Valid UUID, valid body → stub `Update` called, responds 200.
+
+Test cases for **`PATCH /api/v1/tasks/:id/done`**:
+
+- Non-UUID `:id` → 400.
+- Valid UUID → stub `ToggleDone` called, responds 200 with updated task.
+
+Test cases for **`DELETE /api/v1/tasks/:id`**:
+
+- Non-UUID `:id` → 400.
+- Stub `Delete` returns `ErrNotFound` → 404.
+- Stub `Delete` returns nil → 204, empty body.
+
+---
+
+#### `backend/internal/handlers/calendar_handler_test.go`
+
+Test cases for **`GET /api/v1/calendar`**:
+
+- No params → defaults used (current year and month), stub called, 200 with JSON array.
+- `?year=2026&month=2` → stub called with `(2026, 2)`, 200.
+- Stub returns empty slice → body is `[]`, never `null`.
+
+---
+
+#### `backend/internal/handlers/stats_handler_test.go`
+
+Test cases for **`GET /api/v1/stats`**:
+
+- No params → defaults `view=day`, `metric=count` used, stub called, 200 with array.
+- `?view=invalid` → stub returns `ErrBadRequest`, handler responds 400.
+- `?metric=invalid` → same.
+- Valid `view` and `metric` → 200 with chart point array.
+- Stub returns empty slice → body is `[]`, never `null`.
+
+---
+
+#### `backend/internal/middleware/auth_test.go`
+
+Tests the `Auth` middleware in isolation using `httptest` and a stub session repo.
+
+Test cases:
+
+- No cookie → 401, downstream handler never reached.
+- Cookie value that is not a UUID → 401.
+- Cookie is a valid UUID but stub `Validate` returns an error → 401.
+- Cookie is a valid UUID and stub `Validate` returns a session → 200, downstream handler
+  called, `c.Get("session")` holds the session returned by the stub.
+
+---
+
+### 9.4 Frontend — New Test Files
+
+All frontend tests use Vitest + React Testing Library. Hooks are mocked with `vi.mock`.
+Wrap renders in `<QueryClientProvider>` where components use React Query internally.
+
+#### `src/components/tasks/TaskItem.test.tsx`
+
+Test cases:
+
+- Renders task title, points, priority badge (`H` / `M` / `L`), and each tag.
+- Done task has `line-through` class on the title span.
+- Clicking the checkbox calls `onToggle` with the task id.
+- Clicking the delete button shows a `confirm` dialog; confirming calls `onDelete`.
+- Clicking the edit button calls `onEdit` with the full task object.
+- `dragstart` event sets `dataTransfer` data under key `'application/task'` with the JSON
+  of the task.
+
+---
+
+#### `src/components/tasks/TaskList.test.tsx`
+
+Mock `useTasks`, `useToggleDone`, `useDeleteTask` from their respective hook modules.
+
+Test cases:
+
+- `isLoading: true` → renders three skeleton pulse bars, no task text.
+- `data: []`, `isLoading: false` → renders "No tasks for this day" empty state.
+- `data: [task1, task2]` → renders both task titles.
+- Clicking `+ Add task` renders `<TaskForm>` in create mode (form is visible).
+- Clicking the edit button on a task opens `<TaskForm>` pre-filled with that task's data.
+
+---
+
+#### `src/components/tasks/TaskForm.test.tsx`
+
+Mock `useCreateTask` and `useUpdateTask`.
+
+Test cases — **create mode** (no `task` prop):
+
+- Form renders with empty title and the `defaultDate` pre-filled in the date field.
+- Submitting with empty title keeps the button disabled (HTML5 `required` attribute check).
+- Filling title, submitting → `useCreateTask().mutateAsync` called with the right payload.
+- After successful mutation, `onClose` is called.
+- Pressing Escape calls `onClose`.
+
+Test cases — **edit mode** (`task` prop provided):
+
+- Form pre-fills all fields from the task (title, date, due_time, priority, tags, points).
+- Submitting calls `useUpdateTask().mutateAsync` with the task id and updated payload.
+
+---
+
+#### `src/components/sidebar/MiniCalendar.test.tsx`
+
+Mock `useCalendar` and `useMoveTask`.
+
+Test cases:
+
+- Renders the current month name and year.
+- Renders day-of-week headers (Su Mo Tu We Th Fr Sa).
+- Clicking `‹` navigates to the previous month (month name changes).
+- Clicking `›` navigates to the next month.
+- Clicking a day cell calls `onSelectDate` with the correct `Date` object.
+- A day with `useCalendar` data showing `done=1, total=1` renders the text `1/1`.
+- A day with all tasks done (`done === total > 0`) has the green class.
+- Dropping a task onto a day cell calls `useMoveTask().mutate` with the correct new date.
+- Dropping a task onto its current date does NOT call `useMoveTask().mutate`.
+
+---
+
+#### `src/components/stats/StatsChart.test.tsx`
+
+Mock `useStats`.
+
+Test cases:
+
+- Loading state (`isLoading: true`) → renders pulse skeleton, no chart SVG.
+- Data state (`data: [{label: "Feb 28", value: 3}]`) → renders the Recharts SVG.
+- Clicking the `week` toggle button switches the active button style and calls `useStats`
+  with `view="week"`.
+- Clicking the `points` metric toggle switches the active style and re-queries with
+  `metric="points"`.
+- Tooltip label changes based on selected metric (`"Tasks done"` vs `"Points earned"`).
+
+---
+
+#### `src/components/ErrorBoundary.test.tsx`
+
+Test cases:
+
+- A child component that throws during render → the error UI appears (error message text
+  and the "Reload" button are visible).
+- Children that do not throw → rendered normally, no error UI.
+- The error message from the thrown `Error` object appears in the error UI.
+
+---
+
+### 9.5 E2E — Playwright Smoke Test
+
+#### Setup
+
+Install Playwright as a dev dependency in the project root (not inside `frontend/`).
+Create `playwright.config.ts` pointing at `http://localhost` with a 30-second timeout.
+Tests assume `docker compose up` is running before the suite executes.
+
+#### Test file: `e2e/smoke.spec.ts`
+
+##### Flow 1 — First visit and PIN setup
+
+1. Navigate to `http://localhost`.
+2. Assert the "Create PIN" heading is visible.
+3. Fill the PIN input with `"12345678"`.
+4. Click the "Create PIN" button.
+5. Assert the main app shell is visible (e.g. the "Todo Vibe" heading in the header).
+
+##### Flow 2 — Create and toggle a task
+
+1. Click `+ Add task`.
+2. Fill the title field with `"Buy groceries"`.
+3. Submit the form.
+4. Assert the task `"Buy groceries"` appears in the list.
+5. Click the checkbox next to `"Buy groceries"`.
+6. Assert the title has `line-through` styling.
+7. Assert the mini-calendar shows `1/1` on today's cell.
+
+##### Flow 3 — Move a task to another day
+
+1. Drag the `"Buy groceries"` task from the task list and drop it on tomorrow's cell in
+   the mini-calendar.
+2. Assert `"Buy groceries"` disappears from today's task list.
+3. Click tomorrow's cell in the mini-calendar.
+4. Assert `"Buy groceries"` now appears in the list.
+
+##### Flow 4 — Stats chart
+
+1. Scroll to the Stats section.
+2. Assert the Recharts SVG area is visible.
+3. Click the `week` toggle.
+4. Assert the `week` button has the active class.
+5. Click the `points` metric toggle.
+6. Assert the `points` button has the active class.
+
+##### Flow 5 — Lock and unlock
+
+1. Click the lock icon in the header.
+2. Assert the PIN entry screen is visible (the "Enter your PIN" message appears).
+3. Fill the PIN input with `"12345678"`.
+4. Click "Unlock".
+5. Assert the main app shell reappears.
+
+---
+
+### 9.6 New Files Summary
+
+**Backend (Go):**
+
+- `backend/internal/models/date_test.go`
+- `backend/internal/services/stats_service_test.go`
+- `backend/internal/handlers/testhelpers_test.go`
+- `backend/internal/handlers/auth_handler_test.go`
+- `backend/internal/handlers/task_handler_test.go`
+- `backend/internal/handlers/calendar_handler_test.go`
+- `backend/internal/handlers/stats_handler_test.go`
+- `backend/internal/middleware/auth_test.go`
+
+**Frontend (TypeScript/Vitest):**
+
+- `frontend/src/components/tasks/TaskItem.test.tsx`
+- `frontend/src/components/tasks/TaskList.test.tsx`
+- `frontend/src/components/tasks/TaskForm.test.tsx`
+- `frontend/src/components/sidebar/MiniCalendar.test.tsx`
+- `frontend/src/components/stats/StatsChart.test.tsx`
+- `frontend/src/components/ErrorBoundary.test.tsx`
+
+**E2E (Playwright):**
+
+- `playwright.config.ts` (project root)
+- `e2e/smoke.spec.ts`
+
+---
+
+### 9.7 Running the Tests
+
+```bash
+# Backend unit + handler tests (no DB required)
+cd backend && go test ./internal/models/... ./internal/services/... ./internal/handlers/... ./internal/middleware/...
+
+# Backend integration tests (requires TEST_DB_DSN)
+TEST_DB_DSN="postgres://..." cd backend && go test ./...
+
+# Frontend component tests
+cd frontend && npm run test
+
+# E2E (requires docker compose up)
 npx playwright test
 ```

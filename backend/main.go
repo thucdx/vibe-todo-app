@@ -11,6 +11,7 @@ import (
 	"github.com/thucdx/todovibe/internal/db"
 	"github.com/thucdx/todovibe/internal/handlers"
 	"github.com/thucdx/todovibe/internal/middleware"
+	"github.com/thucdx/todovibe/internal/models"
 	"github.com/thucdx/todovibe/internal/repository"
 	"github.com/thucdx/todovibe/internal/services"
 )
@@ -86,6 +87,16 @@ func main() {
 	protected.DELETE("/tasks/:id", taskH.Delete)
 	protected.GET("/calendar", calendarH.Summary)
 	protected.GET("/stats", statsH.Chart)
+
+	if os.Getenv("APP_ENV") == "test" {
+		api.POST("/test/reset", func(c *gin.Context) {
+			ctx := c.Request.Context()
+			_ = taskRepo.DeleteAll(ctx)
+			_ = sessionRepo.DeleteAll(ctx)
+			_ = settingsRepo.Delete(ctx, models.PinHashKey)
+			c.Status(http.StatusNoContent)
+		})
+	}
 
 	slog.Info("server starting", "port", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

@@ -1,19 +1,25 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	apperrors "github.com/thucdx/todovibe/internal/errors"
-	"github.com/thucdx/todovibe/internal/services"
+	"github.com/thucdx/todovibe/internal/repository"
 )
+
+// statsServicer is the subset of services.StatsService used by StatsHandler.
+type statsServicer interface {
+	ChartData(ctx context.Context, view, metric string) ([]repository.ChartPoint, error)
+}
 
 // StatsHandler handles the productivity chart data endpoint.
 type StatsHandler struct {
-	svc *services.StatsService
+	svc statsServicer
 }
 
-func NewStatsHandler(svc *services.StatsService) *StatsHandler {
+func NewStatsHandler(svc statsServicer) *StatsHandler {
 	return &StatsHandler{svc: svc}
 }
 

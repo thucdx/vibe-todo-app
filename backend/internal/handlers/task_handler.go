@@ -1,21 +1,30 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	apperrors "github.com/thucdx/todovibe/internal/errors"
 	"github.com/thucdx/todovibe/internal/models"
-	"github.com/thucdx/todovibe/internal/services"
 )
+
+// taskServicer is the subset of services.TaskService used by TaskHandler.
+type taskServicer interface {
+	List(ctx context.Context, date string) ([]models.Task, error)
+	Create(ctx context.Context, in models.CreateTaskInput) (*models.Task, error)
+	Update(ctx context.Context, id uuid.UUID, in models.UpdateTaskInput) (*models.Task, error)
+	ToggleDone(ctx context.Context, id uuid.UUID) (*models.Task, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
 
 // TaskHandler handles task CRUD endpoints.
 type TaskHandler struct {
-	svc *services.TaskService
+	svc taskServicer
 }
 
-func NewTaskHandler(svc *services.TaskService) *TaskHandler {
+func NewTaskHandler(svc taskServicer) *TaskHandler {
 	return &TaskHandler{svc: svc}
 }
 

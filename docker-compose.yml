@@ -26,6 +26,7 @@ services:
       DB_DSN: ${DB_DSN}
       SESSION_SECRET: ${SESSION_SECRET}
       APP_PIN_RESET: ${APP_PIN_RESET}
+      APP_ENV: ${APP_ENV}
     depends_on:
       db:
         condition: service_healthy

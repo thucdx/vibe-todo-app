@@ -30,3 +30,9 @@ func (r *SettingsRepo) Set(ctx context.Context, key, value string) error {
 	_, err := r.db.ExecContext(ctx, q, key, value)
 	return err
 }
+
+// Delete removes a single settings key row.
+func (r *SettingsRepo) Delete(ctx context.Context, key string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM settings WHERE key = $1`, key)
+	return err
+}
