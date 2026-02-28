@@ -13,4 +13,14 @@ yarn-error.log
 # editor/IDE
 .vscode/
 
-# add other patterns according to the tech‑stack listed in req/req
+# go build artifacts
+backend/server
+
+# test output
+coverage/
+test-results/
+playwright-report/
+
+# claude code
+.claude/worktrees/
+.claude/settings.local.json
