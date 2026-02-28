@@ -138,6 +138,13 @@ POST /api/v1/test/reset                   # test only (APP_ENV=test) — wipe al
 - Blank line before and after every list block
 - Never start a list immediately after a paragraph without a blank line
 
+### ASCII diagrams
+
+- Every box must be wide enough to contain its widest content line, with at least one space of padding on each side
+- Measure the widest content string first, then draw the top/bottom borders to match: interior width ≥ max content length + 2
+- All content lines within the same box must be padded to the same interior width so the right wall is a straight column
+- Verify alignment by checking that `│ <content padding> │` has identical character counts on every row of the same box
+
 ---
 
 ## Testing Strategy

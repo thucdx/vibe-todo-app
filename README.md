@@ -18,7 +18,7 @@ A full-stack task management application with PIN-based authentication, an inter
 
 ## Architecture
 
-```
+```text
 Browser
   │
   ▼
@@ -26,24 +26,28 @@ Browser
 │  Nginx  (port 80)                   │
 │  /api/*  →  backend_pool (2×Go)     │
 │  /*      →  frontend (static)       │
-└────────────┬──────────┬─────────────┘
-             │          │
-     ┌───────▼──┐   ┌───▼──────────────┐
-     │ Backend  │   │  Frontend        │
-     │ Go + Gin │   │  React 18 + Vite │
-     │ ×2 replicas│  │  Tailwind CSS   │
-     └───────┬──┘   └──────────────────┘
-             │
-     ┌───────▼──────┐
-     │  PostgreSQL  │
-     │  (pgdata vol)│
-     └──────────────┘
+└──────────────────┬──────────────────┘
+                   │
+         ┌─────────┴─────────┐
+         │                   │
+         ▼                   ▼
+ ┌───────────────┐ ┌──────────────────┐
+ │ Backend       │ │ Frontend         │
+ │ Go + Gin      │ │ React 18 + Vite  │
+ │ ×2 replicas   │ │ Tailwind CSS     │
+ └───────┬───────┘ └──────────────────┘
+         │
+         ▼
+ ┌───────────────┐
+ │ PostgreSQL    │
+ │ (pgdata vol)  │
+ └───────────────┘
 ```
 
 ### Backend (`backend/`)
 
 | Layer | Technology |
-|---|---|
+| --- | --- |
 | Language | Go 1.22 |
 | HTTP router | Gin 1.9 |
 | Database driver | sqlx + lib/pq |
@@ -52,7 +56,7 @@ Browser
 
 **Package layout:**
 
-```
+```text
 backend/
 ├── main.go                  # Wiring: repos → services → handlers → routes
 ├── internal/
@@ -68,7 +72,7 @@ backend/
 
 **API routes:**
 
-```
+```text
 GET  /healthz                        # Health check (unauthenticated)
 
 /api/v1/auth
@@ -93,7 +97,7 @@ GET  /healthz                        # Health check (unauthenticated)
 ### Frontend (`frontend/`)
 
 | Concern | Technology |
-|---|---|
+| --- | --- |
 | Framework | React 18 + TypeScript |
 | Build tool | Vite 5 |
 | Styling | Tailwind CSS 3 |
@@ -103,7 +107,7 @@ GET  /healthz                        # Health check (unauthenticated)
 
 **Component tree:**
 
-```
+```text
 App
 └── PinGate          (auth check → setup form or login form)
     └── AppShell     (header + two-column layout)
@@ -144,7 +148,7 @@ Edit `.env` and set a strong `SESSION_SECRET` (32+ random characters). The defau
 
 To expose the test-reset endpoint (required for E2E tests), ensure:
 
-```
+```text
 APP_ENV=test
 ```
 
@@ -166,7 +170,7 @@ The first run downloads base images and compiles both services. Subsequent runs 
 
 ### 3. Open the app
 
-Navigate to **http://localhost** — you will be prompted to create a PIN on the first visit.
+Navigate to **<http://localhost>** — you will be prompted to create a PIN on the first visit.
 
 ### 4. Stop the stack
 
@@ -235,7 +239,7 @@ npx playwright show-report
 ## Environment Variables
 
 | Variable | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POSTGRES_DB` | yes | PostgreSQL database name |
 | `POSTGRES_USER` | yes | PostgreSQL user |
 | `POSTGRES_PASSWORD` | yes | PostgreSQL password |
@@ -249,7 +253,7 @@ npx playwright show-report
 
 ## Project Structure
 
-```
+```text
 todo_vibe/
 ├── .env.example
 ├── docker-compose.yml
